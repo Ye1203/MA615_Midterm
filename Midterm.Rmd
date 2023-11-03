@@ -1,0 +1,389 @@
+---
+title: "MA615_Midterm"
+author: "Bingtian Ye"
+date: "2023-10-27"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load("tidyverse","UpSetR","naniar","sf","stringr","scales")
+```
+
+```{css, echo=FALSE}
+h1 {
+    font-size: 1.5em; 
+}
+h2 {
+    font-size: 1.3em;
+}
+h3 {
+    font-size: 1.15em;
+    padding-left: 20px;
+}
+```
+
+## 1.read data
+
+v1 (OpenFEMA Dataset: FEMA Web Disaster Summaries - v1, link = <https://www.fema.gov/openfema-data-page/fema-web-disaster-summaries-v1>) and v2 (OpenFEMA Dataset: Disaster Declarations Summaries - v2, link = <https://www.fema.gov/openfema-data-page/disaster-declarations-summaries-v2>). I observed some data provided by FEMA, and some of the data has nothing to do with flooding. For example, the content in WebDisasterDeclarations that is related to flooding is included in v2. So only the above two data are used.
+
+```{r}
+v1=read.csv("v1.csv",header=T)
+v2=read.csv("v2.csv",header=T)
+```
+
+## 1.Data Fields
+
+### v1 FEMA Web Disaster Summaries
+
+```{=html}
+<style>
+table {
+    width: 100%;
+    font-size: 80%;
+}
+th {
+    font-weight: bold;
+    text-align: center;
+}
+td {
+    text-align: center;
+}
+</style>
+```
+|            Name            |                            Description                             |
+|:-----------------------:|:--------------------------------------------:|
+|       disasterNumber       | Unique identifier for each disaster. Can be used to merge datasets |
+|   totalNumberIaApproved    |          Approved applications for Individual Assistance           |
+|   totalAmountIhpApproved   |       Dollars approved for Individual and Households Program       |
+|   totalAmountHaApproved    |              Dollars approved for Housing Assistance               |
+|   totalAmountOnaApproved   |            Dollars approved for Other Needs Assistance             |
+|   totalObligatedAmountPa   |           Dollars available for Public Assistance grants           |
+| totalObligatedAmountCatAb  |  Dollars for Emergency Work Public Assistance (Categories A & B)   |
+| totalObligatedAmountCatC2g |  Dollars for Permanent Work Public Assistance (Categories C to G)  |
+|         paLoadDate         |              Date Public Assistance data was updated               |
+|         iaLoadDate         |            Date Individual Assistance data was updated             |
+|  totalObligatedAmountHmgp  |     Dollars obligated for the Hazard Mitigation Grant Program      |
+|            hash            |                MD5 hash for the record's integrity                 |
+|        lastRefresh         |                 Date the record was last refreshed                 |
+|             id             |                      Unique ID for the record                      |
+
+### v2 Disaster Declarations Summaries
+
+```{=html}
+<style>
+table {
+    width: 100%;
+    font-size: 80%;
+}
+th {
+    font-weight: bold;
+    text-align: center;
+}
+td {
+    text-align: center;
+}
+</style>
+```
+| Name                     | Description                                                                    |
+|:-------------------:|:----------------------------------------------------:|
+| femaDeclarationString    | Agency standard method for uniquely identifying Stafford Act declarations.     |
+| disasterNumber           | The number of the disaster, unique. Can be used to merge datasets              |
+| state                    | The name or phrase describing the U.S. state, district, or territory           |
+| declarationType          | Two character code that defines the disaster declaration type.                 |
+| declarationDate          | Date the disaster was declared                                                 |
+| fyDeclared               | Fiscal year in which the disaster was declared                                 |
+| incidentType             | Type of incident such as fire or flood.                                        |
+| declarationTitle         | Title for the disaster                                                         |
+| ihProgramDeclared        | Whether the Individuals and Households program was declared for this disaster. |
+| iaProgramDeclared        | Whether the Individual Assistance program was declared for this disaster.      |
+| paProgramDeclared        | Whether the Public Assistance program was declared for this disaster.          |
+| hmProgramDeclared        | Whether the Hazard Mitigation program was declared for this disaster.          |
+| incidentBeginDate        | Date the incident itself began                                                 |
+| incidentEndDate          | Date the incident itself ended                                                 |
+| disasterCloseoutDate     | Date all financial transactions for all programs are completed                 |
+| tribalRequest            | Whether a declaration request was submitted by a Tribal Nation.                |
+| fipsStateCode            | FIPS code used to identify US states and territories                           |
+| fipsCountyCode           | FIPS code used to identify US counties and equivalents                         |
+| placeCode                | FEMA's internal code system to recognize locations                             |
+| designatedArea           | Geographic area included in the declaration                                    |
+| declarationRequestNumber | Number assigned to the declaration request                                     |
+| lastIAFilingDate         | Last date when IA requests can be filed.                                       |
+| lastRefresh              | Date the record was last updated in the API data store                         |
+| hash                     | MD5 Hash of the fields and values of the record                                |
+| id                       | Unique ID assigned to the record                                               |
+
+## Data preparing
+
+By observing the contents of the data table, I decided to use v2 as the main database, and then merged the two databases based on the disasterNumber field. \### Data preparing for v2 First select the required columns. Based on observation, the selected columns are as follows: disasterNumber, state, declarationType, declarationDate, incidentType, declarationTitle, ihProgramDeclared, iaProgramDeclared, paProgramDeclared, hmProgramDeclared, fipsStateCode, fipsCountyCode, id
+
+```{r}
+v2 <- v2 |>
+  select(disasterNumber, state, declarationType, declarationDate, incidentType, declarationTitle, ihProgramDeclared, iaProgramDeclared, paProgramDeclared, hmProgramDeclared, fipsStateCode, fipsCountyCode, id)
+```
+
+Split column declarationDate and select the years in 2020 and 2021
+
+```{r}
+v2 <- v2 |>
+  mutate(year = substr(declarationDate, 1, 4),
+         month = substr(declarationDate, 6, 7),
+         day = substr(declarationDate, 9, 10)) |>
+  filter(year == "2020" | year == "2021") |>
+  select(!declarationDate)
+```
+
+Filter the rows where incidentType is flood, and replace the abbreviation of declarationType with the completion name (DR = Major Disaster Declaration, EM = Emergency Declaration, FM = Fire Management Assistance Declaration).
+
+```{r}
+v2 <- v2 |>
+  filter(incidentType == "Flood") |>
+  mutate(declarationType = case_when(
+    declarationType == "DR" ~ "Major Disaster Declaration",
+    declarationType == "EM" ~ "Emergency Declaration",
+    declarationType == "FM" ~ "Fire Management Assistance Declaration"
+  ))
+```
+
+Remove columns whose values are the same
+
+```{r}
+v2 <- v2 |>
+  select_if(~ n_distinct(.) > 1)
+```
+
+### Data preparing for v1 and Merge two dataset
+
+Remove the following columns: paLoadDate, iaLoadDate, hash, lastRefresh, id. And then merge to dataset by using key "diasasterNumber".
+
+```{r}
+v1 <- v1 |>
+  select(-paLoadDate, -iaLoadDate, -hash, -lastRefresh, -id)
+new_data <- v2 |>
+  left_join(v1, by = "disasterNumber")
+colnames(new_data)
+# check the NA value (missing data)
+gg_miss_upset(new_data)
+```
+
+When the values of the four columns totalNumberIaApproved, totalAmountIhpApproved, totalAmountHaApproved, and totalAmountOnaApproved are NA, we observe that the value of ihProgramDeclared is 0, so we believe that they have not received donations from the Individuals and Households program. Therefore, the missing values in these four columns are set to 0.
+
+```{r}
+#Verify whether the guess is correct
+rows_with_na <- new_data |>
+  filter(
+    is.na(totalNumberIaApproved) |
+    is.na(totalAmountIhpApproved) |
+    is.na(totalAmountHaApproved) |
+    is.na(totalAmountOnaApproved)
+  )
+
+# If the result is TRUE, the guess is correct, otherwise, the guess is incorrect.
+all(rows_with_na$ihProgramDeclared == 0)
+
+#Since the value of above is TRUE, so we set four columns' NA value to 0.
+new_data <- new_data |>
+  mutate(
+    totalNumberIaApproved = ifelse(is.na(totalNumberIaApproved), 0, totalNumberIaApproved),
+    totalAmountIhpApproved = ifelse(is.na(totalAmountIhpApproved), 0, totalAmountIhpApproved),
+    totalAmountHaApproved = ifelse(is.na(totalAmountHaApproved), 0, totalAmountHaApproved),
+    totalAmountOnaApproved = ifelse(is.na(totalAmountOnaApproved), 0, totalAmountOnaApproved)
+  )
+
+# Since disaster 4571 is the only disaster that totalObligatedAmountPa, totalObligatedAmountCatAb, totalObligatedAmountCatC2g. I think it haven't got the money from the three parts, so set it's value to 0.
+new_data <- new_data |>
+  mutate(
+    totalObligatedAmountPa = ifelse(is.na(totalObligatedAmountPa), 0, totalObligatedAmountPa),
+    totalObligatedAmountCatAb = ifelse(is.na(totalObligatedAmountCatAb), 0, totalObligatedAmountCatAb),
+    totalObligatedAmountCatC2g = ifelse(is.na(totalObligatedAmountCatC2g), 0, totalObligatedAmountCatC2g)
+  )
+
+#check the NA value again, if the value is FALSE, the dataset haven's any NA value.
+any(is.na(new_data))
+
+#The value is NA, which means the dataset haven't NA value. We can continue to the follow steps.
+```
+
+## EDA
+
+### Disaster by States
+
+```{r}
+us_states <- st_read("https://eric.clst.org/assets/wiki/uploads/Stuff/gz_2010_us_040_00_5m.json")
+
+# Read the disaster data
+disaster_data <- new_data
+
+# Process the disaster data
+# Dropping duplicates to ensure we count each disaster only once per state
+state_disaster_counts <- disaster_data |>
+  distinct(disasterNumber, fipsStateCode, .keep_all = TRUE) |>
+  count(fipsStateCode) |>
+  mutate(fipsStateCode = as.character(fipsStateCode)) |>
+  rename(StateFIPS = fipsStateCode, Disasters = n)
+
+# Make sure the FIPS codes have leading zeros
+state_disaster_counts$StateFIPS <- str_pad(state_disaster_counts$StateFIPS, width = 2, side = "left", pad = "0")
+
+# Join the disaster data with the state geometries
+merged_data <- left_join(us_states, state_disaster_counts, by = c("STATE" = "StateFIPS"))
+
+# Plot the map
+plot1 <- ggplot(data = merged_data) +
+  geom_sf(aes(fill = Disasters)) +
+  scale_fill_gradient(low = "lightblue", high = "darkred", na.value = "white") +
+  theme_minimal() +
+  labs(title = "Number of Disasters by State", fill = "Disasters") +
+  coord_sf(xlim = c(-170, -65), ylim = c(25, 72))
+
+# Display the plot
+print(plot1)
+```
+
+### Count of Counties by Program Declaration and Value
+
+```{r,message=F}
+declared_data <- new_data |>
+  group_by(fipsStateCode, fipsCountyCode) |>
+  summarise(
+    ihProgramDeclared = sum(ihProgramDeclared, na.rm = TRUE),
+    paProgramDeclared = sum(paProgramDeclared, na.rm = TRUE),
+    hmProgramDeclared = sum(hmProgramDeclared, na.rm = TRUE),
+    .groups = "drop"  
+  )|>
+  mutate(
+    fipsStateCode = str_pad(fipsStateCode, width = 2, pad = "0"),
+    fipsCountyCode = str_pad(fipsCountyCode, width = 3, pad = "0"),
+    FipsCode = paste0(fipsStateCode, fipsCountyCode)  
+  )|>
+  select(
+    -fipsStateCode,
+    -fipsCountyCode
+  )
+# fipscode.csv is from https://transition.fcc.gov/oet/info/maps/census/fips/fips.txt and has been process by using excel
+fips_codes <- read_csv("fipscode.csv", col_names = TRUE)
+
+fips_codes <- fips_codes |>
+  mutate(`FIPS code` = as.character(`FIPS code`))
+
+declared_data_with_names <- declared_data |>
+  left_join(fips_codes, by = c("FipsCode" = "FIPS code"))|>
+  distinct(name, .keep_all = TRUE)
+count_ihProgramDeclared <- declared_data_with_names |>
+  count(ihProgramDeclared, name = "Count") |>
+  mutate(Program = 'IH Program')
+
+count_paProgramDeclared <- declared_data_with_names |>
+  count(paProgramDeclared, name = "Count") |>
+  mutate(Program = 'PA Program')
+
+count_hmProgramDeclared <- declared_data_with_names |>
+  count(hmProgramDeclared, name = "Count") |>
+  mutate(Program = 'HM Program')
+
+program_counts <- bind_rows(count_ihProgramDeclared, count_paProgramDeclared, count_hmProgramDeclared)|>
+  pivot_longer(
+    cols = c(ihProgramDeclared, paProgramDeclared, hmProgramDeclared),
+    names_to = "ProgramDeclaredType",
+    values_to = "Value"
+  )|>
+  filter(!is.na(Value))
+
+ggplot(program_counts, aes(x = ProgramDeclaredType, y = Count, fill = as.factor(Value))) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  labs(title = "Count of Counties by Program Declaration and Value",
+       x = "Program Declared Type",
+       y = "Number of Counties",
+       fill = "Value") +
+  theme_minimal() +
+  scale_fill_manual(values = c("lightyellow", "lightblue", "lightgreen"))
+
+```
+
+### The total amount approved from different program
+
+```{r}
+Approved_data <- new_data |>
+  distinct(disasterNumber,.keep_all = TRUE) |>
+  mutate(as.factor(disasterNumber))|>
+  filter(totalNumberIaApproved != 0, totalAmountIhpApproved != 0, totalAmountHaApproved != 0)|>
+  select(disasterNumber, totalNumberIaApproved, totalAmountIhpApproved, totalAmountHaApproved) |>
+  pivot_longer(
+    cols = -disasterNumber,
+    names_to = "FinancialType",
+    values_to = "Amount"
+  )|>
+  group_by(disasterNumber) |>
+  mutate(Proportion = Amount / sum(Amount),
+         LabelPosition = cumsum(Amount) - (0.5 * Amount)) |>
+  ungroup()
+
+ggplot(Approved_data, aes(x = as.factor(disasterNumber), y = Amount, fill = FinancialType)) +
+  geom_col() +
+  scale_fill_manual(values = c("lightblue", "lightgreen", "lightyellow")) +
+  geom_text(
+    aes(label = scales::percent(Proportion, accuracy = 1), y = LabelPosition),
+    color = "black",
+    size = 3,
+    vjust = 0.5,  
+    check_overlap = TRUE
+  ) +
+  theme_minimal() +
+  labs(x = "Disaster Number", y = "Total Amount", fill = "Financial Type")
+```
+
+### The Public Assistance grant funding available in different disaster
+
+```{r}
+AmongPA <- new_data |>
+  distinct(disasterNumber,.keep_all = TRUE) |>
+  select(disasterNumber,totalObligatedAmountPa)|>
+  mutate(as.factor(disasterNumber))
+
+ggplot(AmongPA) +
+  aes(
+    x = `as.factor(disasterNumber)`,
+    y = totalObligatedAmountPa
+  ) +
+  geom_col(fill = "#4682B4") +
+  labs(x = "Disaster Number", y = "Public Assistance grant funding", title = "The Public Assistance grant funding available in different disaster") +
+  theme_minimal()
+```
+
+### The different types of public assistance grant funds available to recipients in U.S. dollars
+
+```{r}
+Funding <- new_data |>
+  distinct(disasterNumber, .keep_all = TRUE) |>
+  mutate(disasterNumber = as.factor(disasterNumber)) |>
+  select(disasterNumber, totalObligatedAmountCatAb, totalObligatedAmountCatC2g) |>
+  pivot_longer(
+    cols = starts_with("totalObligatedAmount"),
+    names_to = "Category",
+    values_to = "Amount"
+  )|>
+  mutate(Category = recode(Category, 
+                            "totalObligatedAmountCatAb" = "A and B",
+                            "totalObligatedAmountCatC2g" = "C to G"))
+Funding_long <- Funding |>
+  group_by(disasterNumber) |>
+  mutate(TotalAmount = sum(Amount)) |>
+  ungroup()
+
+ggplot(Funding_long, aes(x = as.factor(disasterNumber), y = Amount, fill = Category)) +
+  geom_col() +
+  scale_fill_manual(values = c("#FF7F50", "#E1FFFF"),
+                    labels = c("A and B", "C to G")) +  
+  geom_text(
+    aes(label = scales::percent(Amount / TotalAmount, accuracy = 1)),
+    position = position_stack(vjust = 0.5),
+    size = 3,
+    color = "black"
+  ) +
+  theme_minimal() +
+  labs(x = "Disaster Number", y = "Public Assistance grant funding", fill = "Category",title="The different types of public assistance grant funds available to recipients in U.S. dollars") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+```
