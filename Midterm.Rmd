@@ -9,7 +9,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-pacman::p_load("tidyverse","UpSetR","naniar","sf","stringr","scales")
+pacman::p_load("tidyverse","UpSetR","naniar","sf","stringr","scales","gridExtra")
 ```
 
 ```{css, echo=FALSE}
@@ -54,7 +54,7 @@ td {
 </style>
 ```
 |            Name            |                            Description                             |
-|:-----------------------:|:--------------------------------------------:|
+|:------------------------:|:--------------------------------------------:|
 |       disasterNumber       | Unique identifier for each disaster. Can be used to merge datasets |
 |   totalNumberIaApproved    |          Approved applications for Individual Assistance           |
 |   totalAmountIhpApproved   |       Dollars approved for Individual and Households Program       |
@@ -87,33 +87,33 @@ td {
 }
 </style>
 ```
-| Name                     | Description                                                                    |
-|:-------------------:|:----------------------------------------------------:|
-| femaDeclarationString    | Agency standard method for uniquely identifying Stafford Act declarations.     |
-| disasterNumber           | The number of the disaster, unique. Can be used to merge datasets              |
-| state                    | The name or phrase describing the U.S. state, district, or territory           |
-| declarationType          | Two character code that defines the disaster declaration type.                 |
-| declarationDate          | Date the disaster was declared                                                 |
-| fyDeclared               | Fiscal year in which the disaster was declared                                 |
-| incidentType             | Type of incident such as fire or flood.                                        |
-| declarationTitle         | Title for the disaster                                                         |
-| ihProgramDeclared        | Whether the Individuals and Households program was declared for this disaster. |
-| iaProgramDeclared        | Whether the Individual Assistance program was declared for this disaster.      |
-| paProgramDeclared        | Whether the Public Assistance program was declared for this disaster.          |
-| hmProgramDeclared        | Whether the Hazard Mitigation program was declared for this disaster.          |
-| incidentBeginDate        | Date the incident itself began                                                 |
-| incidentEndDate          | Date the incident itself ended                                                 |
-| disasterCloseoutDate     | Date all financial transactions for all programs are completed                 |
-| tribalRequest            | Whether a declaration request was submitted by a Tribal Nation.                |
-| fipsStateCode            | FIPS code used to identify US states and territories                           |
-| fipsCountyCode           | FIPS code used to identify US counties and equivalents                         |
-| placeCode                | FEMA's internal code system to recognize locations                             |
-| designatedArea           | Geographic area included in the declaration                                    |
-| declarationRequestNumber | Number assigned to the declaration request                                     |
-| lastIAFilingDate         | Last date when IA requests can be filed.                                       |
-| lastRefresh              | Date the record was last updated in the API data store                         |
-| hash                     | MD5 Hash of the fields and values of the record                                |
-| id                       | Unique ID assigned to the record                                               |
+|           Name           |                                  Description                                   |
+|:--------------------:|:------------------------------------------------:|
+|  femaDeclarationString   |   Agency standard method for uniquely identifying Stafford Act declarations.   |
+|      disasterNumber      |       The number of the disaster, unique. Can be used to merge datasets        |
+|          state           |      The name or phrase describing the U.S. state, district, or territory      |
+|     declarationType      |         Two character code that defines the disaster declaration type.         |
+|     declarationDate      |                         Date the disaster was declared                         |
+|        fyDeclared        |                 Fiscal year in which the disaster was declared                 |
+|       incidentType       |                    Type of incident such as fire or flood.                     |
+|     declarationTitle     |                             Title for the disaster                             |
+|    ihProgramDeclared     | Whether the Individuals and Households program was declared for this disaster. |
+|    iaProgramDeclared     |   Whether the Individual Assistance program was declared for this disaster.    |
+|    paProgramDeclared     |     Whether the Public Assistance program was declared for this disaster.      |
+|    hmProgramDeclared     |     Whether the Hazard Mitigation program was declared for this disaster.      |
+|    incidentBeginDate     |                         Date the incident itself began                         |
+|     incidentEndDate      |                         Date the incident itself ended                         |
+|   disasterCloseoutDate   |         Date all financial transactions for all programs are completed         |
+|      tribalRequest       |        Whether a declaration request was submitted by a Tribal Nation.         |
+|      fipsStateCode       |              FIPS code used to identify US states and territories              |
+|      fipsCountyCode      |             FIPS code used to identify US counties and equivalents             |
+|        placeCode         |               FEMA's internal code system to recognize locations               |
+|      designatedArea      |                  Geographic area included in the declaration                   |
+| declarationRequestNumber |                   Number assigned to the declaration request                   |
+|     lastIAFilingDate     |                    Last date when IA requests can be filed.                    |
+|       lastRefresh        |             Date the record was last updated in the API data store             |
+|           hash           |                MD5 Hash of the fields and values of the record                 |
+|            id            |                        Unique ID assigned to the record                        |
 
 ## Data preparing
 
@@ -210,7 +210,7 @@ any(is.na(new_data))
 
 ### Disaster by States
 
-```{r}
+```{r,message=F}
 us_states <- st_read("https://eric.clst.org/assets/wiki/uploads/Stuff/gz_2010_us_040_00_5m.json")
 
 # Read the disaster data
@@ -241,6 +241,8 @@ plot1 <- ggplot(data = merged_data) +
 # Display the plot
 print(plot1)
 ```
+
+According to the results, there will be fewer flood disasters in the United States in 2020 and 2021, and the distribution will be more scattered.
 
 ### Count of Counties by Program Declaration and Value
 
@@ -302,6 +304,8 @@ ggplot(program_counts, aes(x = ProgramDeclaredType, y = Count, fill = as.factor(
 
 ```
 
+It can be seen that a county generally receives less than or equal to one aid plan from the same source. And the number of assistance programs from the Individuals and Households program and Public Assistance program is greater than that from the Individual Assistance program
+
 ### The total amount approved from different program
 
 ```{r}
@@ -334,7 +338,9 @@ ggplot(Approved_data, aes(x = as.factor(disasterNumber), y = Amount, fill = Fina
   labs(x = "Disaster Number", y = "Total Amount", fill = "Financial Type")
 ```
 
-### The Public Assistance grant funding available in different disaster
+The total amount approved for Housing Assistance is similar to The total amount approved for the Individual and Households Program, and basically no The number of disaster assistance applications that were approved for Individual Assistance. 
+
+### The Public Assistance grant funding available in different disaster.
 
 ```{r}
 AmongPA <- new_data |>
@@ -387,3 +393,185 @@ ggplot(Funding_long, aes(x = as.factor(disasterNumber), y = Amount, fill = Categ
   theme(axis.text.x = element_text(angle = 45, hjust = 1))  
 
 ```
+
+It can be seen that most public assistance grant funds available are of type c to g.
+
+## Combine Flood Information With Census
+
+### read data and combine data
+
+```{r,message=F}
+# read data
+houseunit2020 <- read_csv("houseunit2020.csv")
+houseunit2021 <- read_csv("houseunit2021.csv")
+population2020 <- read_csv("population2020.csv")
+population2021 <- read_csv("population2021.csv")
+poverty2020 <- read_csv("poverty2020.csv")
+poverty2021 <- read_csv("poverty2021.csv")
+
+# combine three datasets with same year, get Fipscode
+data_2020 <- population2020 |>
+  left_join(houseunit2020, by = "Geography") |>
+  left_join(poverty2020, by = "Geography") |>
+  mutate(Fipscode = substr(Geography, nchar(Geography)-4, nchar(Geography))) |>
+  select(Fipscode, everything()) |>
+  select(-Geography)
+
+data_2021 <- population2021 |>
+  left_join(houseunit2021, by = "Geography") |>
+  left_join(poverty2021, by = "Geography") |>
+  mutate(Fipscode = substr(Geography, nchar(Geography)-4, nchar(Geography))) |>
+  select(Fipscode, everything()) |>
+  select(-Geography)
+
+# combine datasets with flood information dataset. If year is 2020, combine data_2020, otherwise, combine data_2021. 
+flood_data <- new_data |>
+  mutate(
+    fipsStateCode = str_pad(fipsStateCode, width = 2, pad = "0"),
+    fipsCountyCode = str_pad(fipsCountyCode, width = 3, pad = "0"),
+    Fipscode = paste0(fipsStateCode, fipsCountyCode)  
+  ) |>
+  select(Fipscode, everything())
+# Split the flood_data into two data frames
+flood_data_2020 <- filter(flood_data, year == 2020)
+flood_data_2021 <- filter(flood_data, year == 2021)
+# Join with data_2020 and data_2021
+flood_data_2020 <- flood_data_2020 |>
+  left_join(data_2020, by = "Fipscode")
+flood_data_2021 <- flood_data_2021 |>
+  left_join(data_2021, by = "Fipscode")
+
+# Combine the two data frames
+final_data <- bind_rows(flood_data_2020, flood_data_2021)
+```
+
+### Group by state and disasterNumber
+
+```{r,message=F}
+data_withflood <- final_data|>
+  group_by(disasterNumber, state) %>%
+  summarise(
+    Total_population = sum(`Total population`, na.rm = TRUE),
+    HOUSE_UNIT = sum(`HOUSE UNIT`, na.rm = TRUE),
+    Population_poverty_status_determined = sum(`Population for whom poverty status is determined`, na.rm = TRUE),
+    totalNumberIaApproved = first(totalNumberIaApproved),
+    totalAmountIhpApproved = first(totalAmountIhpApproved),
+    totalAmountHaApproved = first(totalAmountHaApproved),
+    totalAmountOnaApproved = first(totalAmountOnaApproved),
+    totalObligatedAmountPa = first(totalObligatedAmountPa),
+    totalObligatedAmountCatAb = first(totalObligatedAmountCatAb),
+    totalObligatedAmountCatC2g = first(totalObligatedAmountCatC2g),
+    totalObligatedAmountHmgp = first(totalObligatedAmountHmgp),
+    Sum_Total_population = sum(`Total population`, na.rm = TRUE),
+    Sum_HOUSE_UNIT = sum(`HOUSE UNIT`, na.rm = TRUE),
+    Sum_Population_poverty_status_determined = sum(`Population for whom poverty status is determined`, na.rm = TRUE)
+  ) 
+```
+
+## EDA after add datasets
+
+### state population with Total Amount Approved
+
+```{r}
+amount_data <- data_withflood |>
+  filter(!(totalNumberIaApproved == 0 & 
+           totalAmountIhpApproved == 0 & 
+           totalAmountHaApproved == 0 & 
+           totalAmountOnaApproved == 0))
+
+ggplot(amount_data, aes(x = Sum_Total_population)) +
+  geom_area(aes(y = totalNumberIaApproved, fill = 'totalNumberIaApproved'), alpha = 0.5) +
+  geom_area(aes(y = totalAmountIhpApproved, fill = 'totalAmountIhpApproved'), alpha = 0.5) +
+  geom_area(aes(y = totalAmountHaApproved, fill = 'totalAmountHaApproved'), alpha = 0.5) +
+  geom_area(aes(y = totalAmountOnaApproved, fill = 'totalAmountOnaApproved'), alpha = 0.5) +
+  scale_fill_manual(values = c('totalNumberIaApproved' = '#1f77b4',  
+                               'totalAmountIhpApproved' = '#2ca02c', 
+                               'totalAmountHaApproved' = '#ff7f0e',  
+                               'totalAmountOnaApproved' = '#d62728'), 
+                    labels = c('totalNumberIaApproved' = 'Total Number IA Approved',
+                               'totalAmountIhpApproved' = 'Total Amount IHP Approved',
+                               'totalAmountHaApproved' = 'Total Amount HA Approved',
+                               'totalAmountOnaApproved' = 'Total Amount ONA Approved')) +
+  labs(x = "Total Population", y = "Total Amount Approved", fill = "Metric" ,title = "state population with Total Amount Approved") +
+  theme_classic()
+```
+
+### state HOUSE UNIT with Total Amount Approved
+
+```{r}
+ggplot(amount_data, aes(x = Sum_HOUSE_UNIT)) +
+  geom_area(aes(y = totalNumberIaApproved, fill = 'totalNumberIaApproved'), alpha = 0.5) +
+  geom_area(aes(y = totalAmountIhpApproved, fill = 'totalAmountIhpApproved'), alpha = 0.5) +
+  geom_area(aes(y = totalAmountHaApproved, fill = 'totalAmountHaApproved'), alpha = 0.5) +
+  geom_area(aes(y = totalAmountOnaApproved, fill = 'totalAmountOnaApproved'), alpha = 0.5) +
+  scale_fill_manual(values = c('totalNumberIaApproved' = '#1f77b4',  
+                               'totalAmountIhpApproved' = '#2ca02c', 
+                               'totalAmountHaApproved' = '#ff7f0e',  
+                               'totalAmountOnaApproved' = '#d62728'), 
+                    labels = c('totalNumberIaApproved' = 'Total Number IA Approved',
+                               'totalAmountIhpApproved' = 'Total Amount IHP Approved',
+                               'totalAmountHaApproved' = 'Total Amount HA Approved',
+                               'totalAmountOnaApproved' = 'Total Amount ONA Approved')) +
+  labs(x = "HOUSE UNIT", y = "Total Amount Approved", fill = "Metric" ,title = "state HOUSE UNIT with Total Amount Approved") +
+  theme_classic()
+```
+
+### state poverty population with Total Amount Approved
+
+```{r}
+ggplot(amount_data, aes(x = Sum_Population_poverty_status_determined)) +
+  geom_area(aes(y = totalNumberIaApproved, fill = 'totalNumberIaApproved'), alpha = 0.5) +
+  geom_area(aes(y = totalAmountIhpApproved, fill = 'totalAmountIhpApproved'), alpha = 0.5) +
+  geom_area(aes(y = totalAmountHaApproved, fill = 'totalAmountHaApproved'), alpha = 0.5) +
+  geom_area(aes(y = totalAmountOnaApproved, fill = 'totalAmountOnaApproved'), alpha = 0.5) +
+  scale_fill_manual(values = c('totalNumberIaApproved' = '#1f77b4',  
+                               'totalAmountIhpApproved' = '#2ca02c', 
+                               'totalAmountHaApproved' = '#ff7f0e',  
+                               'totalAmountOnaApproved' = '#d62728'), 
+                    labels = c('totalNumberIaApproved' = 'Total Number IA Approved',
+                               'totalAmountIhpApproved' = 'Total Amount IHP Approved',
+                               'totalAmountHaApproved' = 'Total Amount HA Approved',
+                               'totalAmountOnaApproved' = 'Total Amount ONA Approved')) +
+  labs(x = "poverty population", y = "Total Amount Approved", fill = "Metric" ,title = "state poverty population with Total Amount Approved") +
+  theme_classic()
+```
+
+The above three figures all illustrate that the value of The total amount approved will increase with the increase of population, the number of house units and the poverty population. 
+
+### the value of different types of public assistance grant funds available with different population, house unit, poverty population
+
+```{r,message=F}
+fund_data <- data_withflood |>
+  filter(!(totalObligatedAmountCatAb == 0 & 
+           totalObligatedAmountCatC2g == 0))|>
+  pivot_longer(
+    cols = c(Sum_Total_population, Sum_HOUSE_UNIT, Sum_Population_poverty_status_determined),
+    names_to = "TotalType",
+    values_to = "TypeValue"
+  ) |>
+  select(
+    TotalType,
+    TypeValue,
+    totalObligatedAmountCatAb,
+    totalObligatedAmountCatC2g
+  ) |>
+  pivot_longer(
+    cols = starts_with("totalObligatedAmount"),
+    names_to = "ObligationType",
+    values_to = "Amount"
+  )
+
+ggplot(fund_data, aes(x = TypeValue, y = Amount, fill = ObligationType)) +
+  geom_area(position = 'stack', alpha = 0.5) +
+  facet_wrap(~TotalType, scales = 'free_x', ncol = 1) +
+  scale_fill_brewer(palette = "Set1", name = "Obligation Type") +
+  labs(
+    x = "Value",
+    y = "Total Obligated Amount ($)",
+    title = "The Value of Different Types of Public Assistance Grant Funds\nAvailable with Different Population, House Unit, Poverty Population"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+The above three figures all illustrate that the value of The Public Assistance grant funding will increase with the increase in population, the number of house units, and the number of poor people.
